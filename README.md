@@ -100,8 +100,6 @@ En los enfoques híbridos de las Secciones 8 y 9: como capa de corrección sobre
 
 - Wüthrich, M. V. & Merz, M. (2023). *Statistical Foundations of Actuarial Learning and its Applications*. Springer. [Disponible en SSRN](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3822407)
 - Noll, A., Salzmann, R. & Wüthrich, M. V. (2020). *Case Study: French Motor Third-Party Liability Claims*. SSRN.
-- Lorentzen, C. & Mayer, M. (2020). *Peeking into the Black Box: An Actuarial Case Study for Interpretable Machine Learning*. SSRN.
-- Richman, R. (2021). *AI in Actuarial Science*. Annals of Actuarial Science.
 
 ---
 
