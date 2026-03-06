@@ -1,4 +1,4 @@
-# Actuarial Pricing with Machine Learning
+# Actuarial Pricing con Machine Learning
 ### GLM vs ML — Motor Insurance Frequency-Severity Modeling
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
@@ -10,7 +10,9 @@
 
 ## ¿De qué trata este proyecto?
 
-Las aseguradoras calculan cuánto cobrarle a cada cliente usando **modelos actuariales clásicos** que tienen décadas de uso regulatorio. Me propuse a investigar si es posible obtener mejores resultados mediante la utilización de modelos de aprendizaje automatico.
+Las aseguradoras calculan cuánto cobrarle a cada cliente usando **modelos actuariales clásicos** que tienen décadas de uso regulatorio. Las insurtechs desafían ese estándar con Machine Learning. ¿Cuál gana? ¿Y se pueden combinar?
+
+Este proyecto responde esas preguntas de forma rigurosa, usando el mismo flujo que usaría un equipo de pricing en producción:
 
 ```
 Datos reales de siniestros → Modelado de frecuencia y severidad →
@@ -36,7 +38,11 @@ Variables utilizadas: `VehAge`, `DrivAge`, `BonusMalus`, `VehPower`, `Density`, 
 ## Estructura del proyecto
 
 ```
-├── pricing_actuarial_ML.ipynb   # Notebook principal
+actuarial-pricing-ml/
+├── notebooks/
+│   └── pricing_actuarial_ML.ipynb   # Notebook principal
+├── results/                          # Gráficos exportados
+├── .gitignore
 └── README.md
 ```
 
@@ -60,10 +66,13 @@ Variables utilizadas: `VehAge`, `DrivAge`, `BonusMalus`, `VehPower`, `Density`, 
 ## Decisiones técnicas clave
 
 ### ¿Por qué GLM Poisson para frecuencia?
-La variable objetivo (`ClaimNb`) es un conteo discreto no negativo. La familia Poisson con link log es la especificación estadísticamente correcta para este tipo de variable. El offset `log(Exposure)` escala el número esperado de siniestros al tiempo asegurado de cada póliza 
+La variable objetivo (`ClaimNb`) es un conteo discreto no negativo. La familia Poisson con link log es la especificación estadísticamente correcta para este tipo de variable. El offset `log(Exposure)` escala el número esperado de siniestros al tiempo asegurado de cada póliza. La métrica de evaluación es **Poisson Deviance** — consistente con la función de pérdida del modelo y estándar en la industria actuarial.
 
 ### ¿Por qué GLM Gamma para severidad?
-`ClaimAmount` es continuo, positivo y con cola derecha pronunciada — exactamente la forma que describe la distribución Gamma. Modelar esto con MSE (como hace XGBoost por defecto) penaliza outliers de forma inapropiada para el contexto actuarial.
+`ClaimAmount` es continuo, positivo y con cola derecha pronunciada — exactamente la forma que describe la distribución Gamma. Modelar esto con MSE (como hace XGBoost por defecto) penaliza outliers de forma inapropiada para el contexto actuarial. Para severidad las métricas de evaluación son MAE y R², ya que Poisson Deviance aplica solo a variables de conteo.
+
+### ¿Por qué el mismo train/test split para todos los modelos?
+Para garantizar comparabilidad estricta. Un split distinto por modelo es uno de los errores más comunes en proyectos de ML aplicados a seguros.
 
 ### ¿Por qué ML no supera al GLM aquí?
 Tres razones estructurales:
@@ -72,19 +81,21 @@ Tres razones estructurales:
 3. **Especificación correcta**: cuando el proceso generador de datos es realmente Poisson, el GLM captura toda la señal disponible. El residuo es ruido, no patrón.
 
 ### ¿Cuándo agrega valor el ML entonces?
-En los enfoques híbridos de las Secciones 8 y 9: como capa de corrección sobre el GLM (Two-Stage) o como score de riesgo relativo que preserva la suficiencia de prima de cartera (Scoring). 
+En los enfoques híbridos de las Secciones 8 y 9: como capa de corrección sobre el GLM (Two-Stage) o como score de riesgo relativo que preserva la suficiencia de prima de cartera (Scoring). Esta es la arquitectura real que usan las insurtechs hoy.
 
 ---
 
 ## Resultados
 
-| Modelo | RMSE | MAE | R² |
+| Modelo | Poisson Deviance ↓ | MAE ↓ | R² ↑ |
 |---|---|---|---|
 | GLM Poisson | — | — | — |
 | Random Forest | — | — | — |
 | XGBoost | — | — | — |
 | Two-Stage (GLM + XGB) | — | — | — |
 | Scored (GLM × score XGB) | — | — | — |
+
+**Métrica principal: Poisson Deviance** — estándar actuarial para modelos de frecuencia de siniestros. 
 
 > Los valores exactos varían con la versión del dataset. Ejecutar el notebook para ver los resultados actualizados.
 
@@ -101,11 +112,12 @@ En los enfoques híbridos de las Secciones 8 y 9: como capa de corrección sobre
 - Wüthrich, M. V. & Merz, M. (2023). *Statistical Foundations of Actuarial Learning and its Applications*. Springer. [Disponible en SSRN](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3822407)
 - Noll, A., Salzmann, R. & Wüthrich, M. V. (2020). *Case Study: French Motor Third-Party Liability Claims*. SSRN.
 
+
 ---
 
 ## Tecnologías
 
-`Python` · `pandas` · `numpy` · `statsmodels` · `scikit-learn` · `XGBoost` · `matplotlib` · `seaborn`
+`Python` · `pandas` · `numpy` · `statsmodels` · `patsy` · `scikit-learn` · `XGBoost` · `matplotlib` · `seaborn`
 
 ---
 
