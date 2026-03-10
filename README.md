@@ -76,7 +76,7 @@ log(E[ClaimAmount | ClaimNb > 0]) = β₀ + β₁·VehAge + β₂·DrivAge + β�
 | XGBoost — Con BonusMalus | 0,3076 | — |
 | XGBoost — Sin BonusMalus | 0,3136 | +1,93% |
 
-BonusMalus es un score actuarial precalculado que puede no estar disponible en contextos de despliegue insurtech. El ablation study cuantifica su impacto y motiva la búsqueda de proxies alternativos (telemetría, datos de comportamiento, score crediticio).
+BonusMalus es un score actuarial precalculado que puede no estar disponible en ciertos contextos. El ablation study cuantifica su impacto y motiva la búsqueda de proxies alternativos (telemetría, datos de comportamiento, score crediticio).
 
 ### Observaciones clave
 
