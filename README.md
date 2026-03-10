@@ -1,126 +1,128 @@
-# Actuarial Pricing con Machine Learning
-### GLM vs ML — Motor Insurance Frequency-Severity Modeling
+# Pricing Actuarial con GLM y Scoring Comercial con ML
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Domain](https://img.shields.io/badge/Domain-Insurance%20Pricing-orange)
-![Models](https://img.shields.io/badge/Models-GLM%20%7C%20RF%20%7C%20XGBoost-purple)
+Modelo de pricing actuarial de punta a punta sobre el dataset **freMTPL2** (seguro automotor de responsabilidad civil francés). El proyecto sigue la metodología frecuencia-severidad estándar en la industria aseguradora, incorpora una capa de scoring comercial con XGBoost, y cuantifica el impacto de eliminar la variable BonusMalus mediante un ablation study.
 
 ---
 
-## ¿De qué trata este proyecto?
+## Metodología
 
-Las aseguradoras calculan cuánto cobrarle a cada cliente usando **modelos actuariales clásicos** que tienen décadas de uso regulatorio. Las insurtechs desafían ese estándar con Machine Learning. ¿Cuál gana? ¿Y se pueden combinar?
-
-Este proyecto responde esas preguntas de forma rigurosa, usando el mismo flujo que usaría un equipo de pricing en producción:
+La prima pura se descompone en dos modelos independientes:
 
 ```
-Datos reales de siniestros → Modelado de frecuencia y severidad →
-Comparativa GLM vs ML → Enfoques híbridos → Prima pura por póliza
+Prima Pura = E[ClaimNb | X] × E[ClaimAmount | ClaimNb > 0, X]
+           = GLM Poisson (frecuencia) × GLM Gamma (severidad)
 ```
+
+Sobre la prima base del GLM se aplica una capa de scoring comercial (XGBoost):
+
+```
+Prima Scored = Prima Pura × Score de Riesgo Relativo
+```
+
+El score se normaliza a media = 1.0 sobre el conjunto de entrenamiento, preservando la suficiencia de prima a nivel de cartera.
 
 ---
 
 ## Dataset
 
-**freMTPL2** — Motor Third-Party Liability, mercado francés  
-Fuente: OpenML (IDs 41214 y 41215)
+**Fuente:** [freMTPL2 — OpenML](https://www.openml.org/d/41214)
 
-| Dataset | Filas | Descripción |
+| Dataset | Registros | Variables |
 |---|---|---|
-| freMTPL2freq | ~678.000 | Una fila por póliza: exposición, características del vehículo y conductor, número de siniestros |
-| freMTPL2sev | ~26.000 | Una fila por siniestro: importe reclamado |
+| freMTPL2freq (pólizas) | 678.013 | 12 |
+| freMTPL2sev (siniestros) | 26.639 | 2 |
 
-Variables utilizadas: `VehAge`, `DrivAge`, `BonusMalus`, `VehPower`, `Density`, `Area`, `VehBrand`, `VehGas`, `Region`, `Exposure`
-
----
-
-## Estructura del proyecto
-
-```
-actuarial-pricing-ml/
-├── notebooks/
-│   └── pricing_actuarial_ML.ipynb   # Notebook principal
-├── results/                          # Gráficos exportados
-├── .gitignore
-└── README.md
-```
-
-### Secciones del notebook
-
-| Sección | Contenido |
-|---|---|
-| 0. Setup | Imports, constantes globales, configuración |
-| 1. Introducción | Marco teórico: frecuencia × severidad = prima pura |
-| 2. Preparación de datos | Carga, merge, encoding de categóricas, train/test split |
-| 3. Modelos de Frecuencia | GLM Poisson · Random Forest · XGBoost |
-| 4. Comparativa Frecuencia | Métricas, distribuciones, feature importance |
-| 5. Modelos de Severidad | GLM Gamma · XGBoost |
-| 6. Prima Pura | Frecuencia × Severidad para GLM y XGBoost |
-| 7. Conclusiones parciales | Por qué el GLM gana en este contexto |
-| 8. Two-Stage GLM + ML | XGBoost sobre residuos del GLM |
-| 9. Scoring híbrido | Prima GLM × score de riesgo relativo ML |
+26.444 siniestros matcheados tras el join (195 siniestros huérfanos excluidos, 0,73% del total).
 
 ---
 
-## Decisiones técnicas clave
+## Especificación de los Modelos
 
-### ¿Por qué GLM Poisson para frecuencia?
-La variable objetivo (`ClaimNb`) es un conteo discreto no negativo. La familia Poisson con link log es la especificación estadísticamente correcta para este tipo de variable. El offset `log(Exposure)` escala el número esperado de siniestros al tiempo asegurado de cada póliza. La métrica de evaluación es **Poisson Deviance** — consistente con la función de pérdida del modelo y estándar en la industria actuarial.
+### GLM Poisson — Frecuencia
 
-### ¿Por qué GLM Gamma para severidad?
-`ClaimAmount` es continuo, positivo y con cola derecha pronunciada — exactamente la forma que describe la distribución Gamma. Modelar esto con MSE (como hace XGBoost por defecto) penaliza outliers de forma inapropiada para el contexto actuarial. Para severidad las métricas de evaluación son MAE y R², ya que Poisson Deviance aplica solo a variables de conteo.
+```
+log(E[ClaimNb]) = log(Exposure) + β₀ + β₁·VehAge + β₂·DrivAge + β₃·BonusMalus
+               + β₄·VehPower + β₅·Density + Σγₖ·1[VehGas=k] + Σδⱼ·1[Region=j]
+```
 
-### ¿Por qué el mismo train/test split para todos los modelos?
-Para garantizar comparabilidad estricta. Un split distinto por modelo es uno de los errores más comunes en proyectos de ML aplicados a seguros.
+- Exposición incorporada como offset (coeficiente restringido a 1.0)
+- Variables categóricas via dummies con categoría de referencia (`smf.glm`)
 
-### ¿Por qué ML no supera al GLM aquí?
-Tres razones estructurales:
-1. **Sparsidad**: el 93% de las pólizas tiene `ClaimNb = 0`. Con tan poca señal positiva, los árboles no encuentran splits informativos.
-2. **BonusMalus**: esta variable es un resumen actuarial acumulado de toda la historia del conductor — ya contiene implícitamente la información que otras features aportarían.
-3. **Especificación correcta**: cuando el proceso generador de datos es realmente Poisson, el GLM captura toda la señal disponible. El residuo es ruido, no patrón.
+### GLM Gamma — Severidad
 
-### ¿Cuándo agrega valor el ML entonces?
-En los enfoques híbridos de las Secciones 8 y 9: como capa de corrección sobre el GLM (Two-Stage) o como score de riesgo relativo que preserva la suficiencia de prima de cartera (Scoring). Esta es la arquitectura real que usan las insurtechs hoy.
+```
+log(E[ClaimAmount | ClaimNb > 0]) = β₀ + β₁·VehAge + β₂·DrivAge + β₃·BonusMalus
+```
+
+- Especificación parsimoniosa dado el tamaño reducido del dataset (~26k siniestros vs ~678k pólizas)
+- Entrenado exclusivamente sobre pólizas con ClaimNb > 0
+
+### XGBoost — Scoring Comercial
+
+- Entrenado sobre el conjunto completo de features (9 variables incluyendo categóricas)
+- Target: predicciones crudas del GLM Poisson en frecuencia
+- Score = predicción XGBoost / media(predicciones XGBoost en train)
 
 ---
 
 ## Resultados
 
-| Modelo | Poisson Deviance ↓ | MAE ↓ | R² ↑ |
-|---|---|---|---|
-| GLM Poisson | — | — | — |
-| Random Forest | — | — | — |
-| XGBoost | — | — | — |
-| Two-Stage (GLM + XGB) | — | — | — |
-| Scored (GLM × score XGB) | — | — | — |
+### Ablation Study — Impacto de BonusMalus
 
-**Métrica principal: Poisson Deviance** — estándar actuarial para modelos de frecuencia de siniestros. 
+| Modelo | Poisson Deviance | Degradación |
+|---|---|---|
+| GLM — Con BonusMalus | 0,3218 | — |
+| GLM — Sin BonusMalus | 0,3282 | +1,99% |
+| XGBoost — Con BonusMalus | 0,3076 | — |
+| XGBoost — Sin BonusMalus | 0,3136 | +1,93% |
 
-> Los valores exactos varían con la versión del dataset. Ejecutar el notebook para ver los resultados actualizados.
+BonusMalus es un score actuarial precalculado que puede no estar disponible en contextos de despliegue insurtech. El ablation study cuantifica su impacto y motiva la búsqueda de proxies alternativos (telemetría, datos de comportamiento, score crediticio).
+
+### Observaciones clave
+
+- El GLM fue elegido sobre las alternativas de ML por parsimonia: la diferencia de performance no justifica el costo en interpretabilidad en un contexto de pricing regulado.
+- El score XGBoost redistribuye la prima dentro de la cartera sin alterar la suficiencia agregada.
+- BonusMalus domina el feature importance del modelo de scoring. Su eliminación produce una degradación simétrica (~2%) tanto en GLM como en XGBoost, lo que sugiere que las variables restantes capturan información de riesgo similar.
 
 ---
 
-## Conclusión principal
+## Estructura del Repositorio
 
-> El GLM Poisson-Gamma sigue siendo el estándar de la industria por razones bien fundadas: especificación estadística correcta, interpretabilidad regulatoria y comportamiento robusto con datos sparse. Los modelos de ML agregan valor no como reemplazo sino como capa de inteligencia comercial encima del GLM. Esta es exactamente la arquitectura que separa a las insurtechs maduras de los proyectos académicos.
+```
+actuarial-pricing-ml/
+├── notebooks/
+│   └── pricing_actuarial_ML_V5.ipynb   # Notebook principal
+├── results/                             # Gráficos y tablas exportados
+├── .gitignore
+└── README.md
+```
+
+---
+
+## Requisitos
+
+```
+scikit-learn
+statsmodels
+xgboost
+pandas
+numpy
+matplotlib
+seaborn
+patsy
+openml
+```
+
+Instalación:
+
+```bash
+pip install scikit-learn statsmodels xgboost pandas numpy matplotlib seaborn patsy openml
+```
 
 ---
 
 ## Referencias
 
-- Wüthrich, M. V. & Merz, M. (2023). *Statistical Foundations of Actuarial Learning and its Applications*. Springer. [Disponible en SSRN](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3822407)
-- Noll, A., Salzmann, R. & Wüthrich, M. V. (2020). *Case Study: French Motor Third-Party Liability Claims*. SSRN.
-
-
----
-
-## Tecnologías
-
-`Python` · `pandas` · `numpy` · `statsmodels` · `patsy` · `scikit-learn` · `XGBoost` · `matplotlib` · `seaborn`
-
----
-
-## Autor
-
-Proyecto de pricing actuarial desarrollado como parte de mi portfolio profesional en el cruce entre actuaría tradicional y Machine Learning aplicado a seguros.
+- Noll, A., Salzmann, R., Wüthrich, M.V. (2020). *Case Study: French Motor Third-Party Liability Claims*. SSRN. [https://ssrn.com/abstract=3164764](https://ssrn.com/abstract=3164764)
+- Wüthrich, M.V., Merz, M. (2023). *Statistical Foundations of Actuarial Learning and its Applications*. Springer. [https://link.springer.com/book/10.1007/978-3-031-12409-9](https://link.springer.com/book/10.1007/978-3-031-12409-9)
+- Dataset freMTPL2: [https://www.openml.org/d/41214](https://www.openml.org/d/41214)
