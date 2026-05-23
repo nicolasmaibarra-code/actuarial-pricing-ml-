@@ -91,7 +91,7 @@ BonusMalus es un score actuarial precalculado que puede no estar disponible en c
 ```
 actuarial-pricing-ml/
 ├── notebooks/
-│   └── pricing_actuarial_ML_V5.ipynb   # Notebook principal
+│   └── pricing_actuarial_ML.ipynb   # Notebook principal
 ├── .gitignore
 └── README.md
 ```
